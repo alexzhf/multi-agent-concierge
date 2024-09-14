@@ -22,9 +22,10 @@ class InitializeEvent(Event):
     pass
 
 class ConciergeEvent(Event):
-    request: Optional[str]
-    just_completed: Optional[str]
-    need_help: Optional[bool]
+    request: Optional[str] = None
+    just_completed: Optional[str] = None
+    need_help: Optional[bool] = None
+    
 
 class OrchestratorEvent(Event):
     request: str
@@ -115,37 +116,37 @@ class ConciergeWorkflow(Workflow):
         def emit_stock_lookup() -> bool:
             """Call this if the user wants to look up a stock price."""      
             print("__emitted: stock lookup")      
-            self.send_event(StockLookupEvent(request=ev.request))
+            ctx.send_event(StockLookupEvent(request=ev.request))
             return True
 
         def emit_authenticate() -> bool:
             """Call this if the user wants to authenticate"""
             print("__emitted: authenticate")
-            self.send_event(AuthenticateEvent(request=ev.request))
+            ctx.send_event(AuthenticateEvent(request=ev.request))
             return True
 
         def emit_account_balance() -> bool:
             """Call this if the user wants to check an account balance."""
             print("__emitted: account balance")
-            self.send_event(AccountBalanceEvent(request=ev.request))
+            ctx.send_event(AccountBalanceEvent(request=ev.request))
             return True
 
         def emit_transfer_money() -> bool:
             """Call this if the user wants to transfer money."""
             print("__emitted: transfer money")
-            self.send_event(TransferMoneyEvent(request=ev.request))
+            ctx.send_event(TransferMoneyEvent(request=ev.request))
             return True
 
         def emit_concierge() -> bool:
             """Call this if the user wants to do something else or you can't figure out what they want to do."""
             print("__emitted: concierge")
-            self.send_event(ConciergeEvent(request=ev.request))
+            ctx.send_event(ConciergeEvent(request=ev.request))
             return True
 
         def emit_stop() -> bool:
             """Call this if the user wants to stop or exit the system."""
             print("__emitted: stop")
-            self.send_event(StopEvent())
+            ctx.send_event(StopEvent())
             return True
 
         tools = [
@@ -290,7 +291,7 @@ class ConciergeWorkflow(Workflow):
                 print("Account balance agent is authenticating")
                 ctx.data["redirecting"] = True
                 ctx.data["overall_request"] = "Check account balance"
-                self.send_event(AuthenticateEvent(request="Authenticate"))
+                ctx.send_event(AuthenticateEvent(request="Authenticate"))
 
             system_prompt = (f"""
                 You are a helpful assistant that is looking up account balances.
@@ -355,14 +356,14 @@ class ConciergeWorkflow(Workflow):
                 print("Account balance agent is authenticating")
                 ctx.data["redirecting"] = True
                 ctx.data["overall_request"] = "Transfer money"
-                self.send_event(AuthenticateEvent(request="Authenticate"))
+                ctx.send_event(AuthenticateEvent(request="Authenticate"))
 
             def check_balance() -> None:
                 """Call this if the user needs to check their account balance."""
                 print("Transfer money agent is checking balance")
                 ctx.data["redirecting"] = True
                 ctx.data["overall_request"] = "Transfer money"
-                self.send_event(AccountBalanceEvent(request="Check balance"))
+                ctx.send_event(AccountBalanceEvent(request="Check balance"))
             
             system_prompt = (f"""
                 You are a helpful assistant that transfers money between accounts.
@@ -415,13 +416,13 @@ class ConciergeAgent():
             """When you complete your task, call this tool."""
             print(f"{self.name} is complete")
             self.context.data["redirecting"] = True
-            parent.send_event(ConciergeEvent(just_completed=self.name))
+            context.send_event(ConciergeEvent(just_completed=self.name))
 
         def need_help() -> None:
             """If the user asks to do something you don't know how to do, call this."""
             print(f"{self.name} needs help")
             self.context.data["redirecting"] = True
-            parent.send_event(ConciergeEvent(request=self.current_event.request,need_help=True))
+            context.send_event(ConciergeEvent(request=self.current_event.request,need_help=True))
 
         self.tools = [
             FunctionTool.from_defaults(fn=done),
@@ -453,9 +454,13 @@ class ConciergeAgent():
         user_msg_str = input("> ").strip()
         return self.trigger_event(request=user_msg_str)
 
-draw_all_possible_flows(ConciergeWorkflow,filename="concierge_flows.html")
+import sys
 
 async def main():
+    if "--draw" in sys.argv:
+        draw_all_possible_flows(ConciergeWorkflow, filename="concierge_flows.html")
+        return
+    
     c = ConciergeWorkflow(timeout=1200, verbose=True)
     result = await c.run()
     print(result)
